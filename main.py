@@ -31,7 +31,11 @@ net_choices = [
     "Llama-3-70b",
     "Vicuna-1.5-7b",
     "Vicuna-1.5-13b",
-    "mistral-7b"
+    "mistral-7b",
+    "Qwen2-7B",
+    "Qwen2-7B-Instruct",
+    "qwen2-7b",
+    "qwen2-7b-instruct",
 ]
 
 
