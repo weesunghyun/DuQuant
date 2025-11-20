@@ -10,7 +10,7 @@ class DummyLM(LM):
     def create_from_arg_string(cls, arg_string, additional_config=None):
         return cls()
 
-    def loglikelihood(self, requests):
+    def loglikelihood(self, requests, disable_tqdm=False):
         res = []
 
         for _ in requests:
@@ -27,7 +27,7 @@ class DummyLM(LM):
 
         return res
 
-    def loglikelihood_rolling(self, requests):
+    def loglikelihood_rolling(self, requests, disable_tqdm=False):
         res = []
 
         for _ in requests:

@@ -437,7 +437,7 @@ class AutoSeq2SeqLM(HuggingFaceAutoLM):
         return self._DEFAULT_MAX_LENGTH
 
     def loglikelihood(
-        self, requests: List[Tuple[str, str]]
+        self, requests: List[Tuple[str, str]], disable_tqdm: bool = False
     ) -> List[Tuple[float, bool]]:
         new_requests = []
         for chunk in utils.chunks(requests, self.batch_size):
@@ -462,11 +462,18 @@ class AutoSeq2SeqLM(HuggingFaceAutoLM):
             new_requests.append(
                 ((context, continuation), context_enc, continuation_enc)
             )
-        return self._loglikelihood_tokens(new_requests)
+        return self._loglikelihood_tokens(
+            new_requests, disable_tqdm=disable_tqdm
+        )
 
-    def loglikelihood_rolling(self, requests: List[Tuple[str, str]]) -> List[float]:
+    def loglikelihood_rolling(
+        self, requests: List[Tuple[str, str]], disable_tqdm: Optional[bool] = None
+    ) -> List[float]:
         loglikelihoods = []
-        for (string,) in tqdm(requests):
+        outer_disable_tqdm = False if disable_tqdm is None else disable_tqdm
+        inner_disable_tqdm = True if disable_tqdm is None else disable_tqdm
+
+        for (string,) in tqdm(requests, disable=outer_disable_tqdm):
             rolling_token_windows = list(
                 map(
                     utils.make_disjoint_window,
@@ -505,7 +512,7 @@ class AutoSeq2SeqLM(HuggingFaceAutoLM):
                 ((contexts, conts), contexts_enc, conts_enc)
             ]
             string_nll = self._loglikelihood_tokens(
-                rolling_token_windows_request, disable_tqdm=True
+                rolling_token_windows_request, disable_tqdm=inner_disable_tqdm
             )
             string_nll = [x[0] for x in string_nll]  # discard is_greedy
             string_nll = sum(string_nll)

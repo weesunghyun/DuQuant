@@ -2,6 +2,7 @@ import torch
 import transformers
 import torch.nn.functional as F
 from torch import nn
+from typing import Optional
 from tqdm import tqdm
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -133,12 +134,17 @@ class LMClass(BaseLM):
         tokens.extend(self.tok_encode(text))
         return tokens
 
-    def loglikelihood_rolling(self, requests):
+    def loglikelihood_rolling(self, requests, disable_tqdm: Optional[bool] = None):
         if not self.is_llama3:
-            return super().loglikelihood_rolling(requests)
+            return super().loglikelihood_rolling(
+                requests, disable_tqdm=disable_tqdm
+            )
 
         loglikelihoods = []
-        for (string,) in tqdm(requests):
+        outer_disable_tqdm = False if disable_tqdm is None else disable_tqdm
+        inner_disable_tqdm = True if disable_tqdm is None else disable_tqdm
+
+        for (string,) in tqdm(requests, disable=outer_disable_tqdm):
             tokenized = self._prepare_perplexity_tokens(string)
             rolling_token_windows = list(
                 map(
@@ -155,7 +161,7 @@ class LMClass(BaseLM):
             rolling_token_windows = [(None,) + x for x in rolling_token_windows]
 
             string_nll = self._loglikelihood_tokens(
-                rolling_token_windows, disable_tqdm=True
+                rolling_token_windows, disable_tqdm=inner_disable_tqdm
             )
 
             string_nll = [x[0] for x in string_nll]

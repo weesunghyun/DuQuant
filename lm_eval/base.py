@@ -1,5 +1,5 @@
 import abc
-from typing import Iterable
+from typing import Iterable, Optional
 import numpy as np
 import random
 import re
@@ -22,7 +22,7 @@ class LM(abc.ABC):
         self.cache_hook = CacheHook(None)
 
     @abstractmethod
-    def loglikelihood(self, requests):
+    def loglikelihood(self, requests, disable_tqdm: bool = False):
         """Compute log-likelihood of generating a continuation from a context.
         Downstream tasks should attempt to use loglikelihood instead of other
         LM calls whenever possible.
@@ -46,7 +46,7 @@ class LM(abc.ABC):
         pass
 
     @abstractmethod
-    def loglikelihood_rolling(self, requests):
+    def loglikelihood_rolling(self, requests, disable_tqdm: Optional[bool] = None):
         """Compute full log-likelihood of a string, with no truncation, for perplexity computation
         - We will use the full max context length of the model.
         - For inputs that exceed the max context length, we divide the tokenized string into chunks of up to
@@ -169,7 +169,7 @@ class BaseLM(LM):
     # subclass must implement properties vocab_size, eot_token_id, max_gen_toks, batch_size, device, max_length.
     # TODO: enforce this somehow
 
-    def loglikelihood(self, requests):
+    def loglikelihood(self, requests, disable_tqdm: bool = False):
         new_reqs = []
         for context, continuation in requests:
             if context == "":
@@ -182,14 +182,19 @@ class BaseLM(LM):
 
             new_reqs.append(((context, continuation), context_enc, continuation_enc))
 
-        return self._loglikelihood_tokens(new_reqs)
+        return self._loglikelihood_tokens(new_reqs, disable_tqdm=disable_tqdm)
 
-    def loglikelihood_rolling(self, requests):
+    def loglikelihood_rolling(
+        self, requests, disable_tqdm: Optional[bool] = None
+    ):
         # TODO: Implement caching once we've confirmed the perplexity implementation
         # TODO: automatic batch size detection for vectorization
 
         loglikelihoods = []
-        for (string,) in tqdm(requests):
+        outer_disable_tqdm = False if disable_tqdm is None else disable_tqdm
+        inner_disable_tqdm = True if disable_tqdm is None else disable_tqdm
+
+        for (string,) in tqdm(requests, disable=outer_disable_tqdm):
             rolling_token_windows = list(
                 map(
                     utils.make_disjoint_window,
@@ -207,7 +212,7 @@ class BaseLM(LM):
             # TODO: extract out this call so it only gets called once and also somehow figure out partial caching for
             # that
             string_nll = self._loglikelihood_tokens(
-                rolling_token_windows, disable_tqdm=True
+                rolling_token_windows, disable_tqdm=inner_disable_tqdm
             )
 
             # discard is_greedy
