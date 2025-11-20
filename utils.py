@@ -81,15 +81,13 @@ def load_config_with_rope_fix(model_name, **kwargs):
         rope_scaling = config_dict.get("rope_scaling")
 
         if isinstance(rope_scaling, dict) and "factor" in rope_scaling:
+            # Older ``transformers`` builds only accept ``{"type", "factor"}``
+            # for ``rope_scaling``. Strip any newer metadata to keep the config
+            # compatible with those versions.
             normalized_rope = {
-                "type": "dynamic",  # supported by older transformers versions
+                "type": rope_scaling.get("type", "dynamic"),
                 "factor": rope_scaling["factor"],
             }
-
-            # Preserve optional fields supported by newer configs when present.
-            for optional_key in ("original_max_position_embeddings", "rope_type"):
-                if optional_key in rope_scaling:
-                    normalized_rope[optional_key] = rope_scaling[optional_key]
 
             config_dict["rope_scaling"] = normalized_rope
         else:
