@@ -104,7 +104,11 @@ def load_config_with_rope_fix(model_name, **kwargs):
             if callable(original_validation):
                 config_class._rope_scaling_validation = original_validation
 
-        config.rope_scaling = deepcopy(rope_scaling)
+        rope_scaling_copy = deepcopy(rope_scaling)
+        if "type" not in rope_scaling_copy:
+            rope_scaling_copy["type"] = "yarn" if "rope_type" in rope_scaling_copy else "linear"
+
+        config.rope_scaling = rope_scaling_copy
 
         return config
 
