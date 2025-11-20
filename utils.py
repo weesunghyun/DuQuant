@@ -9,7 +9,7 @@ from math import inf
 import torch
 from termcolor import colored
 from tqdm import tqdm
-from transformers import AutoConfig
+from transformers import AutoConfig, PretrainedConfig
 
 
 @torch.no_grad()
@@ -73,7 +73,11 @@ def load_config_with_rope_fix(model_name, **kwargs):
         if "rope_scaling" not in str(exc):
             raise
 
-        config_dict, unused_kwargs = AutoConfig.get_config_dict(model_name, **kwargs)
+        # ``AutoConfig.get_config_dict`` is unavailable in older ``transformers``
+        # releases (e.g., 4.35). Fall back to ``PretrainedConfig.get_config_dict``
+        # which exists in those versions and returns the same tuple
+        # ``(config_dict, unused_kwargs)``.
+        config_dict, unused_kwargs = PretrainedConfig.get_config_dict(model_name, **kwargs)
         rope_scaling = config_dict.get("rope_scaling")
 
         if (
