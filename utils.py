@@ -1,3 +1,4 @@
+import inspect
 import logging
 import math
 import os
@@ -58,6 +59,37 @@ class NativeScalerWithGradNormCount:
         self._scaler.load_state_dict(state_dict)
 
 
+def _detect_supported_rope_scaling_types():
+    """Return the RoPE scaling types supported by the installed transformers."""
+
+    supported_types = set()
+
+    try:
+        from transformers.models.llama.modeling_llama import LlamaAttention
+
+        for attr in ("_ROPE_TYPES", "ROPE_TYPES"):
+            rope_types = getattr(LlamaAttention, attr, None)
+            if isinstance(rope_types, (list, tuple, set)):
+                supported_types.update(rope_types)
+
+        init_rope = getattr(LlamaAttention, "_init_rope", None)
+        if callable(init_rope):
+            try:
+                source = inspect.getsource(init_rope)
+            except (OSError, TypeError):
+                source = ""
+
+            for candidate in ("yarn", "linear", "dynamic", "longrope"):
+                if f"'{candidate}'" in source or f'"{candidate}"' in source:
+                    supported_types.add(candidate)
+    except Exception:
+        # Best-effort detection: fall back to an empty set so the caller can
+        # choose a sensible default.
+        pass
+
+    return supported_types
+
+
 def load_config_with_rope_fix(model_name, **kwargs):
     """Load configs that include Llama-3 style rope_scaling definitions.
 
@@ -105,8 +137,22 @@ def load_config_with_rope_fix(model_name, **kwargs):
                 config_class._rope_scaling_validation = original_validation
 
         rope_scaling_copy = deepcopy(rope_scaling)
-        if "type" not in rope_scaling_copy:
-            rope_scaling_copy["type"] = "yarn" if "rope_type" in rope_scaling_copy else "linear"
+
+        supported_rope_types = _detect_supported_rope_scaling_types()
+
+        preferred_type = rope_scaling_copy.get("type")
+        if preferred_type is None:
+            preferred_type = "yarn" if "rope_type" in rope_scaling_copy else "linear"
+
+        if supported_rope_types and preferred_type not in supported_rope_types:
+            fallback_order = ["linear", "dynamic", "yarn"]
+            fallback_type = next(
+                (rope_type for rope_type in fallback_order if rope_type in supported_rope_types),
+                next(iter(supported_rope_types)),
+            )
+            rope_scaling_copy["type"] = fallback_type
+        else:
+            rope_scaling_copy["type"] = preferred_type
 
         config.rope_scaling = rope_scaling_copy
 
