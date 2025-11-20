@@ -34,6 +34,31 @@ def _supported_rope_scaling_types_from_attention():
     return supported_types
 
 
+def _expected_rope_type(rope_scaling: dict, supported_types: set):
+    rope_type = rope_scaling.get("rope_type")
+    preferred_type = (
+        rope_scaling.get("type")
+        or rope_type
+        or ("yarn" if rope_type is not None else "linear")
+    )
+
+    if supported_types and preferred_type not in supported_types:
+        fallback_order = [
+            rope_type,
+            "llama3",
+            "yarn",
+            "dynamic",
+            "linear",
+        ]
+        fallback_type = next(
+            (candidate for candidate in fallback_order if candidate in supported_types),
+            next(iter(supported_types)),
+        )
+        return fallback_type
+
+    return preferred_type
+
+
 def test_load_config_with_rope_type_preserved(tmp_path: Path):
     # Simulate a Llama-3 style config that includes rope scaling values rejected
     # by older ``transformers`` releases.
@@ -63,13 +88,7 @@ def test_load_config_with_rope_type_preserved(tmp_path: Path):
     loaded_config = load_config_with_rope_fix(str(config_dir))
 
     supported_types = _supported_rope_scaling_types_from_attention()
-    fallback_order = ["linear", "dynamic", "yarn"]
-    expected_type = rope_scaling["type"]
-    if supported_types and expected_type not in supported_types:
-        expected_type = next(
-            (rope_type for rope_type in fallback_order if rope_type in supported_types),
-            next(iter(supported_types)),
-        )
+    expected_type = _expected_rope_type(rope_scaling, supported_types)
 
     assert loaded_config.rope_scaling["type"] == expected_type
     for key, value in rope_scaling.items():
@@ -103,15 +122,11 @@ def test_load_config_adds_missing_rope_type_field(tmp_path: Path):
     loaded_config = load_config_with_rope_fix(str(config_dir))
 
     supported_types = _supported_rope_scaling_types_from_attention()
-    fallback_order = ["linear", "dynamic", "yarn"]
-    expected_type = "yarn"
-    if supported_types and expected_type not in supported_types:
-        expected_type = next(
-            (rope_type for rope_type in fallback_order if rope_type in supported_types),
-            next(iter(supported_types)),
-        )
+    expected_type = _expected_rope_type(rope_scaling, supported_types)
 
     assert loaded_config.rope_scaling["type"] == expected_type
+    if "llama3" in supported_types:
+        assert loaded_config.rope_scaling["type"] == "llama3"
     for key, value in rope_scaling.items():
         assert loaded_config.rope_scaling[key] == value
 
@@ -143,8 +158,9 @@ def test_load_config_sets_supported_rope_type(tmp_path: Path):
     loaded_config = load_config_with_rope_fix(str(config_dir))
 
     supported_types = _supported_rope_scaling_types_from_attention()
-    if supported_types and "yarn" not in supported_types:
-        assert loaded_config.rope_scaling["type"] in supported_types
+    expected_type = _expected_rope_type(rope_scaling, supported_types)
+
+    assert loaded_config.rope_scaling["type"] == expected_type
 
     from transformers.models.llama.modeling_llama import LlamaAttention
 
