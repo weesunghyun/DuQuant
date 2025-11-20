@@ -3,8 +3,7 @@ import os
 
 from transformers import (
     AutoModelForCausalLM,
-    AutoTokenizer,
-    AutoConfig
+    AutoTokenizer
 )
 import argparse
 import torch.nn as nn
@@ -13,6 +12,7 @@ from datasets import load_dataset
 import functools
 from tqdm import tqdm
 from datautils import get_loaders
+from utils import load_config_with_rope_fix
 try:
     from llava.model import *   # required for llava
 except ImportError:
@@ -99,7 +99,8 @@ def get_act_shifts(model, dataloader, num_samples=128):
 def build_model_and_tokenizer(model_name):
     kwargs = {"torch_dtype": torch.float16, "device_map": "auto"}
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False,legacy=False)
-    model = AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
+    config = load_config_with_rope_fix(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name, config=config, **kwargs)
     return model, tokenizer
 
 def parse_args():
