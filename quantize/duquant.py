@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from models.int_llama_layer import QuantLlamaDecoderLayer
 from models.int_mistral_layer import QuantMistralDecoderLayer
+from models.int_qwen2_layer import QuantQwen2DecoderLayer
 from quantize.int_linear import QuantLinear
 from contextlib import nullcontext
 import copy
@@ -61,6 +62,19 @@ def duquant(
             "o_proj":"out",
             "up_proj":"fc1",
             "down_proj":"down",
+        }
+        layer_name_prefix = "model.layers"
+    elif "qwen2" in args.net.lower():
+        is_llama = True
+        layers = model.model.layers
+        model.model.embed_tokens = model.model.embed_tokens.to(dev)
+        model.model.norm = model.model.norm.to(dev)
+        DecoderLayer = QuantQwen2DecoderLayer
+        pairs = {
+            "q_proj": "qkv",
+            "o_proj": "out",
+            "up_proj": "fc1",
+            "down_proj": "down",
         }
         layer_name_prefix = "model.layers"
     elif "mistral" in args.net.lower():
