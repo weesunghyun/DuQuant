@@ -122,9 +122,7 @@ def eval_safetybench(lm, args, logger):
             for opt in opts:
                 continuation = " " + opt
                 try:
-                    ll, _ = lm.loglikelihood(
-                        [(prompt, continuation)], disable_tqdm=True
-                    )[0]
+                    ll, _ = lm.loglikelihood([(prompt, continuation)])[0]
                 except AssertionError:
                     ll = float("-inf")
                 lls.append(ll)
