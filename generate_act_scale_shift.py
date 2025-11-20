@@ -3,8 +3,10 @@ import os
 
 from transformers import (
     AutoModelForCausalLM,
-    AutoTokenizer
+    AutoTokenizer,
+    __version__ as transformers_version,
 )
+from packaging import version
 import argparse
 import torch.nn as nn
 
@@ -20,6 +22,14 @@ except ImportError:
 
 # import pdb
 # CUDA_VISIBLE_DEVICES=0 python generate_act_scale_shift.py --model ../model/llama3-8b
+
+
+def _ensure_qwen2_support(model_name: str) -> None:
+    if "qwen2" in model_name.lower():
+        if version.parse(transformers_version) < version.parse("4.40.0"):
+            raise ImportError(
+                "Qwen2 models require transformers>=4.40.0. Update your installation to load Qwen2 architectures."
+            )
 
 
 def get_act_scales(model, dataloader, num_samples=128):
@@ -97,6 +107,7 @@ def get_act_shifts(model, dataloader, num_samples=128):
 
 
 def build_model_and_tokenizer(model_name):
+    _ensure_qwen2_support(model_name)
     kwargs = {"torch_dtype": torch.float16, "device_map": "auto"}
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False,legacy=False)
     config = load_config_with_rope_fix(model_name)

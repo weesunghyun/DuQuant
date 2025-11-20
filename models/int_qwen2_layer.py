@@ -1,15 +1,25 @@
+import copy
+import math
+from typing import Optional, Tuple
+
 import torch
 from torch import nn
-from typing import Optional, Tuple
+from transformers import __version__ as transformers_version
+from transformers.activations import ACT2FN
+from packaging import version
+
+from models.transformation import *
+from quantize.du_norm import DuQwen2RMSNorm
 from quantize.int_linear import QuantLinear
 from quantize.int_matmul import QuantMatMul
-from quantize.du_norm import DuQwen2RMSNorm
-import math
-import copy
-from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb, repeat_kv
+
+_MIN_QWEN2_VERSION = "4.40.0"
+if version.parse(transformers_version) < version.parse(_MIN_QWEN2_VERSION):
+    raise ImportError(
+        "Qwen2 models require transformers>=4.40.0. Update your installation to load Qwen2 architectures."
+    )
 from transformers.models.qwen2.configuration_qwen2 import Qwen2Config
-from transformers.activations import ACT2FN
-from models.transformation import *
+from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb, repeat_kv
 
 
 class QuantQwen2MLP(nn.Module):
