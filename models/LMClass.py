@@ -7,7 +7,12 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils import load_config_with_rope_fix
-from .models_utils import BaseLM, find_layers
+from .models_utils import (
+    BaseLM,
+    find_layers,
+    get_rolling_token_windows,
+    make_disjoint_window,
+)
 import pdb
 
 
@@ -33,6 +38,11 @@ class LMClass(BaseLM):
         self.model.eval()
         self.vocab_size = self.tokenizer.vocab_size
         print("vocab size: ", self.vocab_size)
+
+        self.is_llama3 = self._is_llama3_tokenizer()
+        self.llama3_system_prompt = getattr(
+            self.tokenizer, "default_system_prompt", None
+        )
 
     @property
     def eot_token(self) -> str:
@@ -79,6 +89,81 @@ class LMClass(BaseLM):
 
     def tok_decode(self, tokens):
         return self.tokenizer.batch_decode(tokens, skip_special_tokens=True)
+
+    def _is_llama3_tokenizer(self):
+        model_name = self.model_name.lower()
+        template = getattr(self.tokenizer, "chat_template", None) or ""
+        if "llama-3" in model_name:
+            return True
+        return "llama-3" in template.lower()
+
+    def _perplexity_prefix_token_id(self):
+        if self.is_llama3 and self.tokenizer.bos_token_id is not None:
+            return self.tokenizer.bos_token_id
+        return self.eot_token_id
+
+    def _prepare_perplexity_tokens(self, text: str):
+        if not self.is_llama3:
+            return self.tok_encode(text)
+
+        chat_template = getattr(self.tokenizer, "chat_template", None)
+
+        if chat_template:
+            system_prompt = []
+            if self.llama3_system_prompt:
+                system_prompt.append(
+                    {"role": "system", "content": self.llama3_system_prompt}
+                )
+            messages = system_prompt + [{"role": "user", "content": text}]
+            return self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=False,
+            )
+
+        tokens = []
+        if self.tokenizer.bos_token_id is not None:
+            tokens.append(self.tokenizer.bos_token_id)
+        if self.llama3_system_prompt:
+            tokens.extend(
+                self.tokenizer.encode(
+                    self.llama3_system_prompt, add_special_tokens=False
+                )
+            )
+        tokens.extend(self.tok_encode(text))
+        return tokens
+
+    def loglikelihood_rolling(self, requests):
+        if not self.is_llama3:
+            return super().loglikelihood_rolling(requests)
+
+        loglikelihoods = []
+        for (string,) in tqdm(requests):
+            tokenized = self._prepare_perplexity_tokens(string)
+            rolling_token_windows = list(
+                map(
+                    make_disjoint_window,
+                    get_rolling_token_windows(
+                        token_list=tokenized,
+                        prefix_token=self._perplexity_prefix_token_id(),
+                        max_seq_len=self.max_length,
+                        context_len=1,
+                    ),
+                )
+            )
+
+            rolling_token_windows = [(None,) + x for x in rolling_token_windows]
+
+            string_nll = self._loglikelihood_tokens(
+                rolling_token_windows, disable_tqdm=True
+            )
+
+            string_nll = [x[0] for x in string_nll]
+
+            string_nll = sum(string_nll)
+            loglikelihoods.append(string_nll)
+
+        return loglikelihoods
 
     def _model_call(self, inps):
         """
