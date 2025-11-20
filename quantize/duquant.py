@@ -86,7 +86,7 @@ def duquant(
         traincast = nullcontext
     else:
         dtype = torch.float16
-        traincast = torch.cuda.amp.autocast
+        traincast = torch.amp.autocast('cuda')
     inps = torch.zeros(
         (args.nsamples, lm.seqlen, model.config.hidden_size), dtype=dtype, device=dev
     )
@@ -180,7 +180,7 @@ def duquant(
         set_quant_state(qlayer, weight_quant=False, act_quant=False)
         if args.epochs > 0 :
             with torch.no_grad():
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     for j in range(args.nsamples):
                         fp_inps[j] = qlayer(fp_inps[j].unsqueeze(0), attention_mask=attention_mask,position_ids=position_ids)[0]
                         if args.aug_loss:
@@ -276,7 +276,7 @@ def duquant(
                 qlayer.load_duquant_params(duquant_parameters[i], dev)
             else:
                 with torch.no_grad():
-                    with torch.cuda.amp.autocast():
+                    with torch.amp.autocast('cuda'):
                         set_registered_x_none(qlayer)
                         rotate_inps = qlayer(rotate_inps.unsqueeze(0), attention_mask=attention_mask,position_ids=position_ids)[0][0]
             qlayer.register_duquant_params()
@@ -365,7 +365,7 @@ def duquant(
         if args.epochs>0 :
             # update input of quantization model
             with torch.no_grad():
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     for j in range(args.nsamples):
                         quant_inps[j] = qlayer(quant_inps[j].unsqueeze(0), attention_mask=attention_mask,position_ids=position_ids)[0]
             register_scales_and_zeros(qlayer)
