@@ -19,7 +19,7 @@ sentencepiece
 tokenizers>=0.12.1
 torch>=2.0.0
 torchvision 
-transformers==4.35.2 
+transformers==4.44.1 
 texttable
 toml
 attributedict
