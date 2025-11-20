@@ -72,7 +72,7 @@ def eval_safetybench(lm, args, logger):
         shot_data = {}
 
     prompt_map = {}
-    for item in tqdm(data, desc="Generating prompts"):
+    for item in data:
         q = item["question"].strip()
         opts = item["options"]
         option_str = "\n".join(f"({chr(65 + i)}) {opt}" for i, opt in enumerate(opts))
@@ -111,28 +111,30 @@ def eval_safetybench(lm, args, logger):
     else:
         results = [{**item, "res": None} for item in data]
 
-    for entry in tqdm(results, desc="Generating"):
-        prompt = prompt_map[entry["id"]]
-        opts = entry["options"]
+    with tqdm(total=len(results), desc="SafetyBench") as pbar:
+        for entry in results:
+            prompt = prompt_map[entry["id"]]
+            opts = entry["options"]
 
-        lls = []
-        for opt in opts:
-            continuation = " " + opt
-            try:
-                ll, _ = lm.loglikelihood([(prompt, continuation)])[0]
-            except AssertionError:
-                ll = float("-inf")
-            lls.append(ll)
+            lls = []
+            for opt in opts:
+                continuation = " " + opt
+                try:
+                    ll, _ = lm.loglikelihood([(prompt, continuation)])[0]
+                except AssertionError:
+                    ll = float("-inf")
+                lls.append(ll)
 
-        entry["res"] = int(lls.index(max(lls)))
+            entry["res"] = int(lls.index(max(lls)))
 
-        submission = {
-            str(d["id"]): d["res"]
-            for d in sorted(results, key=lambda x: x["id"])
-            if d["res"] is not None
-        }
-        with open(save_path, "w") as f:
-            json.dump(submission, f, indent=2)
+            submission = {
+                str(d["id"]): d["res"]
+                for d in sorted(results, key=lambda x: x["id"])
+                if d["res"] is not None
+            }
+            with open(save_path, "w") as f:
+                json.dump(submission, f, indent=2)
+            pbar.update(1)
 
     logger.info(f"SafetyBench results saved to {save_path}")
     submission = {
