@@ -140,12 +140,21 @@ def load_config_with_rope_fix(model_name, **kwargs):
 
         supported_rope_types = _detect_supported_rope_scaling_types()
 
+        rope_type = rope_scaling_copy.get("rope_type")
         preferred_type = rope_scaling_copy.get("type")
         if preferred_type is None:
-            preferred_type = "yarn" if "rope_type" in rope_scaling_copy else "linear"
+            preferred_type = rope_type
+        if preferred_type is None:
+            preferred_type = "yarn" if rope_type is not None else "linear"
 
         if supported_rope_types and preferred_type not in supported_rope_types:
-            fallback_order = ["linear", "dynamic", "yarn"]
+            fallback_order = [
+                rope_type,
+                "llama3",
+                "yarn",
+                "dynamic",
+                "linear",
+            ]
             fallback_type = next(
                 (rope_type for rope_type in fallback_order if rope_type in supported_rope_types),
                 next(iter(supported_rope_types)),
