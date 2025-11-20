@@ -19,8 +19,9 @@ sentencepiece
 tokenizers>=0.12.1
 torch>=2.0.0
 torchvision 
-transformers==4.35.2 
+transformers>=4.40.0
 texttable
 toml
 attributedict
 protobuf
+packaging
