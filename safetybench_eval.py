@@ -111,8 +111,10 @@ def eval_safetybench(lm, args, logger):
     else:
         results = [{**item, "res": None} for item in data]
 
-    with tqdm(total=len(results), desc="SafetyBench") as pbar:
-        for entry in results:
+    precomputed = sum(1 for entry in results if entry["res"] is not None)
+
+    with tqdm(total=len(results), desc="SafetyBench", initial=precomputed) as pbar:
+        for entry in (r for r in results if r["res"] is None):
             prompt = prompt_map[entry["id"]]
             opts = entry["options"]
 
