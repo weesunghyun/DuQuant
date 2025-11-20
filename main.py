@@ -13,6 +13,7 @@ import torch.nn as nn
 from quantize.duquant import duquant
 from tqdm import tqdm
 import utils
+from safetybench_eval import eval_safetybench
 from pathlib import Path
 from categories import subcategories, categories
 
@@ -188,7 +189,11 @@ def evaluate(lm, args, logger):
                 cat_acc = np.mean(cat_cors[cat])
                 logger.info("Average accuracy {:.4f} - {}".format(cat_acc, cat))
             weighted_acc = np.mean(all_cors)
-            logger.info("Average accuracy: {:.4f}".format(weighted_acc))               
+            logger.info("Average accuracy: {:.4f}".format(weighted_acc))
+
+    if args.eval_safetybench:
+        safetybench_scores = eval_safetybench(lm, args, logger)
+        results["safetybench"] = safetybench_scores
 
     return results
 
@@ -254,6 +259,27 @@ def main():
     # MMLU
     parser.add_argument("--mmlu_data_dir", default="./mmlu/data", type=str, help="direction of mmlu dataset")
     parser.add_argument("--eval_mmlu", action="store_true", help="evaluate on MMLU")
+
+    # SafetyBench
+    parser.add_argument("--eval_safetybench", action="store_true", help="evaluate on SafetyBench")
+    parser.add_argument(
+        "--safetybench_data_path", default="./SafetyBench/test_en.json", type=str
+    )
+    parser.add_argument(
+        "--safetybench_shot_path", default="./SafetyBench/dev_en.json", type=str
+    )
+    parser.add_argument(
+        "--safetybench_answer_path",
+        default="./SafetyBench/test_answers_en.json",
+        type=str,
+    )
+    parser.add_argument(
+        "--safetybench_save_path",
+        default="./log/safetybench/predictions.json",
+        type=str,
+    )
+    parser.add_argument("--safetybench_zero_shot", action="store_true")
+    parser.add_argument("--safetybench_use_instruct", action="store_true")
     
     # MTBench
     parser.add_argument("--eval_mtbench", action="store_true", help="evaluate on MTBench")
