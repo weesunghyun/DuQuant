@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from models.int_llama_layer import QuantLlamaDecoderLayer
 from models.int_mistral_layer import QuantMistralDecoderLayer
-from models.int_qwen2_layer import QuantQwen2DecoderLayer
+# from models.int_qwen2_layer import QuantQwen2DecoderLayer
 from quantize.int_linear import QuantLinear
 from contextlib import nullcontext
 import copy
