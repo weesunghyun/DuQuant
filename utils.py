@@ -63,7 +63,8 @@ def load_config_with_rope_fix(model_name, **kwargs):
     Newer Llama-3 configs ship rope_scaling entries that include extra
     keys (``rope_type``) which older versions of ``transformers`` reject.
     This helper normalizes the field to the legacy ``{"type", "factor"}``
-    shape before instantiating the config.
+    shape before instantiating the config while preserving metadata such as
+    ``rope_type`` for downstream consumers.
     """
 
     try:
@@ -79,23 +80,38 @@ def load_config_with_rope_fix(model_name, **kwargs):
         # ``(config_dict, unused_kwargs)``.
         config_dict, unused_kwargs = PretrainedConfig.get_config_dict(model_name, **kwargs)
         rope_scaling = config_dict.get("rope_scaling")
+        rope_scaling_metadata = None
 
         if isinstance(rope_scaling, dict) and "factor" in rope_scaling:
             # Older ``transformers`` builds only accept ``{"type", "factor"}``
             # for ``rope_scaling``. Strip any newer metadata to keep the config
-            # compatible with those versions.
+            # compatible with those versions while preserving rope semantics.
+            rope_type = rope_scaling.get("rope_type")
+            rope_scaling_metadata = dict(rope_scaling)
+
+            allowed_rope_types = {"linear", "dynamic"}
+            rope_type_candidate = rope_scaling.get("type") or rope_type
             normalized_rope = {
-                "type": rope_scaling.get("type", "dynamic"),
+                "type": rope_type_candidate if rope_type_candidate in allowed_rope_types else "dynamic",
                 "factor": rope_scaling["factor"],
             }
-
             config_dict["rope_scaling"] = normalized_rope
         else:
             raise
 
         config_class = AutoConfig.for_model(config_dict.get("model_type"))
         merged_kwargs = {**unused_kwargs, **kwargs}
-        return config_class.from_dict(config_dict, **merged_kwargs)
+        config = config_class.from_dict(config_dict, **merged_kwargs)
+
+        if rope_scaling_metadata is not None:
+            combined_rope_scaling = {
+                "type": config.rope_scaling.get("type"),
+                "factor": config.rope_scaling.get("factor"),
+            }
+            combined_rope_scaling.update(rope_scaling_metadata)
+            config.rope_scaling = combined_rope_scaling
+
+        return config
 
 
 def create_logger(output_dir, dist_rank=0, name=''):
