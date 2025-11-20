@@ -1,11 +1,13 @@
-import transformers
 import torch
-from .models_utils import BaseLM, find_layers
-from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
+import transformers
 import torch.nn.functional as F
 from torch import nn
-import torch
 from tqdm import tqdm
+
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from utils import load_config_with_rope_fix
+from .models_utils import BaseLM, find_layers
 import pdb
 
 
@@ -20,7 +22,7 @@ class LMClass(BaseLM):
         self.batch_size_per_gpu = args.batch_size
 
         self.model_config = args.model
-        config = AutoConfig.from_pretrained(
+        config = load_config_with_rope_fix(
             args.model, attn_implementation=args.attn_implementation
         )
 

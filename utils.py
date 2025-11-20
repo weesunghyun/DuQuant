@@ -1,13 +1,15 @@
-import torch
-from math import inf
 import logging
-from termcolor import colored
-import sys
-import os
-import time
-import pickle
-from tqdm import tqdm
 import math
+import os
+import pickle
+import sys
+import time
+from math import inf
+
+import torch
+from termcolor import colored
+from tqdm import tqdm
+from transformers import AutoConfig
 
 
 @torch.no_grad()
@@ -53,6 +55,43 @@ class NativeScalerWithGradNormCount:
 
     def load_state_dict(self, state_dict):
         self._scaler.load_state_dict(state_dict)
+
+
+def load_config_with_rope_fix(model_name, **kwargs):
+    """Load configs that include Llama-3 style rope_scaling definitions.
+
+    Newer Llama-3 configs ship rope_scaling entries that include extra
+    keys (``rope_type``) which older versions of ``transformers`` reject.
+    This helper normalizes the field to the legacy ``{"type", "factor"}``
+    shape before instantiating the config.
+    """
+
+    try:
+        return AutoConfig.from_pretrained(model_name, **kwargs)
+    except ValueError as exc:
+        # Only attempt to coerce rope_scaling related validation errors.
+        if "rope_scaling" not in str(exc):
+            raise
+
+        config_dict, unused_kwargs = AutoConfig.get_config_dict(model_name, **kwargs)
+        rope_scaling = config_dict.get("rope_scaling")
+
+        if (
+            isinstance(rope_scaling, dict)
+            and "type" not in rope_scaling
+            and "rope_type" in rope_scaling
+            and "factor" in rope_scaling
+        ):
+            config_dict["rope_scaling"] = {
+                "type": rope_scaling["rope_type"],
+                "factor": rope_scaling["factor"],
+            }
+        else:
+            raise
+
+        config_class = AutoConfig.for_model(config_dict.get("model_type"))
+        merged_kwargs = {**unused_kwargs, **kwargs}
+        return config_class.from_dict(config_dict, **merged_kwargs)
 
 
 def create_logger(output_dir, dist_rank=0, name=''):
