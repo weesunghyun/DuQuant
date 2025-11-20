@@ -63,6 +63,8 @@ class QuantLlamaAttention(nn.Module):
         self.num_key_value_heads = config.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = config.max_position_embeddings
+        self.attn_logit_softcapping = getattr(config, "attn_logit_softcapping", None)
+        self.sliding_window = getattr(config, "sliding_window", None)
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
@@ -103,6 +105,25 @@ class QuantLlamaAttention(nn.Module):
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+
+    def _apply_sliding_window(self, attn_weights: torch.Tensor, query_length: int, key_length: int):
+        if self.sliding_window is None:
+            return attn_weights
+
+        sliding_window = self.sliding_window
+        if sliding_window is None or sliding_window <= 0 or key_length <= sliding_window:
+            return attn_weights
+
+        arange_q = torch.arange(query_length, device=attn_weights.device)
+        arange_k = torch.arange(key_length, device=attn_weights.device)
+        distance = arange_q.unsqueeze(-1) - arange_k.unsqueeze(0)
+
+        attention_mask = (distance >= sliding_window).unsqueeze(0).unsqueeze(0)
+        if attention_mask.any():
+            min_value = torch.finfo(attn_weights.dtype).min
+            attn_weights = attn_weights.masked_fill(attention_mask, min_value)
+
+        return attn_weights
 
     def forward(
         self,
@@ -160,7 +181,18 @@ class QuantLlamaAttention(nn.Module):
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
             attn_weights = attn_weights + attention_mask
-            attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
+
+        if self.sliding_window is not None:
+            attn_weights = self._apply_sliding_window(attn_weights, q_len, kv_seq_len)
+
+        min_value = torch.finfo(attn_weights.dtype).min
+        attn_weights = torch.max(attn_weights, torch.tensor(min_value, device=attn_weights.device, dtype=attn_weights.dtype))
+
+        if self.attn_logit_softcapping is not None and self.attn_logit_softcapping > 0:
+            softcapping = torch.tensor(
+                self.attn_logit_softcapping, device=attn_weights.device, dtype=attn_weights.dtype
+            )
+            attn_weights = torch.tanh(attn_weights / softcapping) * softcapping
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
