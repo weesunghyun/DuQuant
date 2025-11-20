@@ -4,6 +4,7 @@ import os
 import pickle
 import sys
 import time
+from copy import deepcopy
 from math import inf
 
 import torch
@@ -62,9 +63,10 @@ def load_config_with_rope_fix(model_name, **kwargs):
 
     Newer Llama-3 configs ship rope_scaling entries that include extra
     keys (``rope_type``) which older versions of ``transformers`` reject.
-    This helper normalizes the field to the legacy ``{"type", "factor"}``
-    shape before instantiating the config while preserving metadata such as
-    ``rope_type`` for downstream consumers.
+    This helper bypasses strict validation to preserve all rope_scaling
+    fields (e.g., ``factor``, ``low_freq_factor``, ``high_freq_factor``,
+    ``original_max_position_embeddings``, ``rope_type``) so downstream
+    consumers receive the full dictionary.
     """
 
     try:
@@ -80,36 +82,29 @@ def load_config_with_rope_fix(model_name, **kwargs):
         # ``(config_dict, unused_kwargs)``.
         config_dict, unused_kwargs = PretrainedConfig.get_config_dict(model_name, **kwargs)
         rope_scaling = config_dict.get("rope_scaling")
-        rope_scaling_metadata = None
-
-        if isinstance(rope_scaling, dict) and "factor" in rope_scaling:
-            # Older ``transformers`` builds only accept ``{"type", "factor"}``
-            # for ``rope_scaling``. Strip any newer metadata to keep the config
-            # compatible with those versions while preserving rope semantics.
-            rope_type = rope_scaling.get("rope_type")
-            rope_scaling_metadata = dict(rope_scaling)
-
-            allowed_rope_types = {"linear", "dynamic"}
-            rope_type_candidate = rope_scaling.get("type") or rope_type
-            normalized_rope = {
-                "type": rope_type_candidate if rope_type_candidate in allowed_rope_types else "dynamic",
-                "factor": rope_scaling["factor"],
-            }
-            config_dict["rope_scaling"] = normalized_rope
-        else:
+        if not isinstance(rope_scaling, dict):
             raise
 
-        config_class = AutoConfig.for_model(config_dict.get("model_type"))
+        config_factory = AutoConfig.for_model(config_dict.get("model_type"))
+        config_class = config_factory if isinstance(config_factory, type) else type(config_factory)
         merged_kwargs = {**unused_kwargs, **kwargs}
-        config = config_class.from_dict(config_dict, **merged_kwargs)
+        config_dict_copy = deepcopy(config_dict)
 
-        if rope_scaling_metadata is not None:
-            combined_rope_scaling = {
-                "type": config.rope_scaling.get("type"),
-                "factor": config.rope_scaling.get("factor"),
-            }
-            combined_rope_scaling.update(rope_scaling_metadata)
-            config.rope_scaling = combined_rope_scaling
+        original_validation = getattr(config_class, "_rope_scaling_validation", None)
+
+        def _passthrough_validation(self):  # noqa: N802
+            return None
+
+        if callable(original_validation):
+            config_class._rope_scaling_validation = _passthrough_validation
+
+        try:
+            config = config_class.from_dict(config_dict_copy, **merged_kwargs)
+        finally:
+            if callable(original_validation):
+                config_class._rope_scaling_validation = original_validation
+
+        config.rope_scaling = deepcopy(rope_scaling)
 
         return config
 
