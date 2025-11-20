@@ -80,16 +80,18 @@ def load_config_with_rope_fix(model_name, **kwargs):
         config_dict, unused_kwargs = PretrainedConfig.get_config_dict(model_name, **kwargs)
         rope_scaling = config_dict.get("rope_scaling")
 
-        if (
-            isinstance(rope_scaling, dict)
-            and "type" not in rope_scaling
-            and "rope_type" in rope_scaling
-            and "factor" in rope_scaling
-        ):
-            config_dict["rope_scaling"] = {
-                "type": rope_scaling["rope_type"],
+        if isinstance(rope_scaling, dict) and "factor" in rope_scaling:
+            normalized_rope = {
+                "type": "dynamic",  # supported by older transformers versions
                 "factor": rope_scaling["factor"],
             }
+
+            # Preserve optional fields supported by newer configs when present.
+            for optional_key in ("original_max_position_embeddings", "rope_type"):
+                if optional_key in rope_scaling:
+                    normalized_rope[optional_key] = rope_scaling[optional_key]
+
+            config_dict["rope_scaling"] = normalized_rope
         else:
             raise
 
