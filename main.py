@@ -102,7 +102,8 @@ def evaluate(lm, args, logger):
         # for dataset in ["wikitext2", "ptb", "c4","ptb-new",'c4-new']:
         # for dataset in ["wikitext2", 'c4']:
         for dataset in ["wikitext2"]:
-            cache_testloader = f'{args.cache_dir}/testloader_{args.model_family}_{dataset}_all.cache'
+            # cache_testloader = f'{args.cache_dir}/testloader_{args.model_family}_{dataset}_all.cache'
+            cache_testloader = f'{args.cache_dir}/testloader_{args.net}_{dataset}_all.cache'
             if os.path.exists(cache_testloader):
                 testloader = torch.load(cache_testloader, weights_only=False)
                 logger.info(f"load calibration from {cache_testloader}")
@@ -373,6 +374,7 @@ def main():
         args.net = args.model.split('/')[-1]
     # assert args.net in net_choices
     args.model_family = args.net.split('-')[0]
+    print("args.net: ", args.net)
     lm = LMClass(args)
     lm.seqlen = 2048
     lm.model.eval()
@@ -449,7 +451,8 @@ def main():
         logger.info("=== start quantization ===")
         tick = time.time()     
         # load calibration dataset
-        cache_dataloader = f'{args.cache_dir}/dataloader_{args.model_family}_{args.calib_dataset}_{args.nsamples}.cache'
+        # cache_dataloader = f'{args.cache_dir}/dataloader_{args.model_family}_{args.calib_dataset}_{args.nsamples}.cache'
+        cache_dataloader = f'{args.cache_dir}/dataloader_{args.net}_{args.calib_dataset}_{args.nsamples}.cache'
         if os.path.exists(cache_dataloader):
             dataloader = torch.load(cache_dataloader)
             logger.info(f"load calibration from {cache_dataloader}")
